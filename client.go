@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -34,9 +33,8 @@ import (
 )
 
 const (
-	stockAPIURLEnvKey       = "STOCK_API_URL"
-	defaultStockAPIURL      = "http://localhost:8096"
-	inventoryClientTimeout  = 30 * time.Second
+	defaultStockAPIURL     = "http://localhost:8096"
+	inventoryClientTimeout = 30 * time.Second
 )
 
 // Client is the HTTP client for bbo-stock-api inventory endpoints.
@@ -47,10 +45,10 @@ type Client struct {
 
 var defaultClient *Client
 
-// GetClient returns a singleton client instance configured from STOCK_API_URL.
+// GetClient returns a singleton client instance configured from configs.STOCK_API_URL.
 func GetClient() *Client {
 	if defaultClient == nil {
-		baseURL := os.Getenv(stockAPIURLEnvKey)
+		baseURL := configs.STOCK_API_URL
 		if baseURL == "" {
 			baseURL = defaultStockAPIURL
 		}

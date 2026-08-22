@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
-	github.com/natifdevelopment/go-config v0.0.19
+	github.com/natifdevelopment/go-config v0.0.25
 )
 
 require (
