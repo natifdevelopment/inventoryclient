@@ -1,6 +1,7 @@
 package inventoryclient
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -50,6 +51,12 @@ func (col *OpCollector) Delete(isHarian bool, p DeleteInventoryParams) {
 // AddInventory/UpdateInventory are idempotent (stock-api checks t_ref_id),
 // so retries on failure are safe.
 //
+// Flush respects the request context: if the caller (e.g. the API gateway)
+// has already timed out and canceled the request context, remaining retries
+// and backoff sleeps are aborted promptly. The DB transaction has already
+// committed, so aborted ops must be reconciled manually or via a future
+// outbox mechanism.
+//
 // Errors are logged but do NOT abort the caller — the calling transaction
 // has already committed and cannot be rolled back. Failed operations
 // should be reconciled manually or via a future outbox mechanism.
@@ -57,18 +64,38 @@ func (col *OpCollector) Flush(c *gin.Context) {
 	if len(col.ops) == 0 {
 		return
 	}
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
 	client := GetClient()
 	for _, op := range col.ops {
+		if ctx.Err() != nil {
+			log.Printf("inventory flush: context canceled, skipping remaining ops (action=%s harian=%v refId=%s): %v — manual reconciliation required",
+				op.action, op.isHarian, op.upsertParams.ReferenceId, ctx.Err())
+			return
+		}
 		var err error
 		for attempt := 0; attempt < 3; attempt++ {
 			err = col.executeOp(client, c, op)
 			if err == nil {
 				break
 			}
+			if ctx.Err() != nil {
+				log.Printf("inventory flush: context canceled during retry (action=%s harian=%v refId=%s): %v — manual reconciliation required",
+					op.action, op.isHarian, op.upsertParams.ReferenceId, ctx.Err())
+				return
+			}
 			backoff := time.Duration(attempt+1) * 2 * time.Second
 			log.Printf("inventory flush: attempt %d failed (action=%s harian=%v): %v — retrying in %v",
 				attempt+1, op.action, op.isHarian, err, backoff)
-			time.Sleep(backoff)
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				log.Printf("inventory flush: context canceled during backoff (action=%s harian=%v refId=%s): %v — manual reconciliation required",
+					op.action, op.isHarian, op.upsertParams.ReferenceId, ctx.Err())
+				return
+			}
 		}
 		if err != nil {
 			log.Printf("inventory flush: FAILED after retries (action=%s harian=%v refId=%s): %v — manual reconciliation required",

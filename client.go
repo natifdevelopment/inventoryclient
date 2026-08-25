@@ -17,6 +17,7 @@ package inventoryclient
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -73,28 +74,28 @@ func NewClient(baseURL string) *Client {
 // GetCurrentBalance fetches the latest inventory record for an organization.
 func (cl *Client) GetCurrentBalance(c *gin.Context, orgId uuid.UUID) (*InventoryBalance, error) {
 	url := fmt.Sprintf("%s/api/v1/inventory/current-balance/%s", cl.baseURL, orgId)
-	return cl.doGetBalance(url)
+	return cl.doGetBalance(c, url)
 }
 
 // GetBalanceAt fetches the inventory balance at a specific date.
 func (cl *Client) GetBalanceAt(c *gin.Context, orgId uuid.UUID, at time.Time) (*InventoryBalance, error) {
 	url := fmt.Sprintf("%s/api/v1/inventory/balance-at/%s/%s", cl.baseURL, orgId, at.UTC().Format(time.RFC3339))
-	return cl.doGetBalance(url)
+	return cl.doGetBalance(c, url)
 }
 
 // AddInventory creates an inventory record via HTTP. Must be called after tx commit.
 func (cl *Client) AddInventory(c *gin.Context, params UpsertInventoryParams) error {
-	return cl.doPost("/api/v1/inventory/add", upsertBody(params))
+	return cl.doPost(c, "/api/v1/inventory/add", upsertBody(params))
 }
 
 // UpdateInventory updates an inventory record via HTTP. Must be called after tx commit.
 func (cl *Client) UpdateInventory(c *gin.Context, params UpsertInventoryParams) error {
-	return cl.doPost("/api/v1/inventory/update", upsertBody(params))
+	return cl.doPost(c, "/api/v1/inventory/update", upsertBody(params))
 }
 
 // DeleteInventory removes an inventory record via HTTP. Must be called after tx commit.
 func (cl *Client) DeleteInventory(c *gin.Context, params DeleteInventoryParams) error {
-	return cl.doPost("/api/v1/inventory/delete", deleteBody(params))
+	return cl.doPost(c, "/api/v1/inventory/delete", deleteBody(params))
 }
 
 // --- InventoryHarian (t_inventory_harian) ---
@@ -102,28 +103,28 @@ func (cl *Client) DeleteInventory(c *gin.Context, params DeleteInventoryParams) 
 // GetCurrentBalanceHarian fetches the latest inventory harian record.
 func (cl *Client) GetCurrentBalanceHarian(c *gin.Context, orgId uuid.UUID) (*InventoryBalance, error) {
 	url := fmt.Sprintf("%s/api/v1/inventory-harian/current-balance/%s", cl.baseURL, orgId)
-	return cl.doGetBalance(url)
+	return cl.doGetBalance(c, url)
 }
 
 // GetBalanceAtHarian fetches the inventory harian balance at a specific date.
 func (cl *Client) GetBalanceAtHarian(c *gin.Context, orgId uuid.UUID, at time.Time) (*InventoryBalance, error) {
 	url := fmt.Sprintf("%s/api/v1/inventory-harian/balance-at/%s/%s", cl.baseURL, orgId, at.UTC().Format(time.RFC3339))
-	return cl.doGetBalance(url)
+	return cl.doGetBalance(c, url)
 }
 
 // AddInventoryHarian creates an inventory harian record via HTTP.
 func (cl *Client) AddInventoryHarian(c *gin.Context, params UpsertInventoryParams) error {
-	return cl.doPost("/api/v1/inventory-harian/add", upsertBody(params))
+	return cl.doPost(c, "/api/v1/inventory-harian/add", upsertBody(params))
 }
 
 // UpdateInventoryHarian updates an inventory harian record via HTTP.
 func (cl *Client) UpdateInventoryHarian(c *gin.Context, params UpsertInventoryParams) error {
-	return cl.doPost("/api/v1/inventory-harian/update", upsertBody(params))
+	return cl.doPost(c, "/api/v1/inventory-harian/update", upsertBody(params))
 }
 
 // DeleteInventoryHarian removes an inventory harian record via HTTP.
 func (cl *Client) DeleteInventoryHarian(c *gin.Context, params DeleteInventoryParams) error {
-	return cl.doPost("/api/v1/inventory-harian/delete", deleteBody(params))
+	return cl.doPost(c, "/api/v1/inventory-harian/delete", deleteBody(params))
 }
 
 // --- HTTP helpers ---
@@ -153,8 +154,12 @@ func deleteBody(params DeleteInventoryParams) map[string]interface{} {
 	return body
 }
 
-func (cl *Client) doGetBalance(url string) (*InventoryBalance, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func (cl *Client) doGetBalance(c *gin.Context, url string) (*InventoryBalance, error) {
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("inventory client: create request: %w", err)
 	}
@@ -184,13 +189,17 @@ func (cl *Client) doGetBalance(url string) (*InventoryBalance, error) {
 	return &apiResp.Data, nil
 }
 
-func (cl *Client) doPost(path string, body map[string]interface{}) error {
+func (cl *Client) doPost(c *gin.Context, path string, body map[string]interface{}) error {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("inventory client: marshal body: %w", err)
 	}
 	url := cl.baseURL + path
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(jsonBody))
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
 	if err != nil {
 		return fmt.Errorf("inventory client: create request: %w", err)
 	}
