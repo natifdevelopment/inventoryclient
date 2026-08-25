@@ -45,3 +45,14 @@ type DeleteInventoryParams struct {
 	TargetId       *uuid.UUID
 	ReferenceId    uuid.UUID
 }
+
+// OutboxEntry is a public representation of a queued inventory operation,
+// suitable for serialization into an outbox table. Use OpCollector.PendingOps()
+// to retrieve the ops collected during a transaction so they can be persisted
+// inside the same DB transaction and processed asynchronously by a worker.
+type OutboxEntry struct {
+	IsHarian     bool                  `json:"isHarian"`
+	Action       string                `json:"action"` // "add", "update", "delete"
+	UpsertParams UpsertInventoryParams `json:"upsertParams,omitempty"`
+	DeleteParams DeleteInventoryParams `json:"deleteParams,omitempty"`
+}

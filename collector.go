@@ -44,6 +44,26 @@ func (col *OpCollector) Delete(isHarian bool, p DeleteInventoryParams) {
 	col.ops = append(col.ops, Op{isHarian: isHarian, action: "delete", deleteParams: p})
 }
 
+// PendingOps returns a copy of the queued operations as OutboxEntry values.
+// Use this to persist the collected ops into a transactional outbox table
+// (inside the same GORM transaction) so they can be processed asynchronously
+// by a background worker, instead of calling Flush synchronously after commit.
+// Calling PendingOps does not clear the collector; Flush can still be called
+// afterward if needed, but typically you use either PendingOps (outbox mode)
+// or Flush (sync mode), not both.
+func (col *OpCollector) PendingOps() []OutboxEntry {
+	entries := make([]OutboxEntry, len(col.ops))
+	for i, op := range col.ops {
+		entries[i] = OutboxEntry{
+			IsHarian:     op.isHarian,
+			Action:       op.action,
+			UpsertParams: op.upsertParams,
+			DeleteParams: op.deleteParams,
+		}
+	}
+	return entries
+}
+
 // Flush executes all pending inventory operations via HTTP to bbo-stock-api.
 // It is called AFTER the main GORM transaction commits.
 //

@@ -219,6 +219,59 @@ func (cl *Client) doPost(c *gin.Context, path string, body map[string]interface{
 	return nil
 }
 
+// ExecuteOutboxEntry processes a single OutboxEntry via the appropriate
+// stock-api endpoint. It is intended for use by a background outbox worker
+// that processes persisted outbox rows asynchronously. The context is used
+// for cancellation; pass context.Background() from a worker goroutine.
+func (cl *Client) ExecuteOutboxEntry(ctx context.Context, entry OutboxEntry) error {
+	if entry.IsHarian {
+		switch entry.Action {
+		case "add":
+			return cl.doPostCtx(ctx, "/api/v1/inventory-harian/add", upsertBody(entry.UpsertParams))
+		case "update":
+			return cl.doPostCtx(ctx, "/api/v1/inventory-harian/update", upsertBody(entry.UpsertParams))
+		case "delete":
+			return cl.doPostCtx(ctx, "/api/v1/inventory-harian/delete", deleteBody(entry.DeleteParams))
+		}
+	}
+	switch entry.Action {
+	case "add":
+		return cl.doPostCtx(ctx, "/api/v1/inventory/add", upsertBody(entry.UpsertParams))
+	case "update":
+		return cl.doPostCtx(ctx, "/api/v1/inventory/update", upsertBody(entry.UpsertParams))
+	case "delete":
+		return cl.doPostCtx(ctx, "/api/v1/inventory/delete", deleteBody(entry.DeleteParams))
+	}
+	return fmt.Errorf("inventory client: unknown outbox action %q", entry.Action)
+}
+
+// doPostCtx is a context-only variant of doPost for worker use (no gin.Context).
+func (cl *Client) doPostCtx(ctx context.Context, path string, body map[string]interface{}) error {
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("inventory client: marshal body: %w", err)
+	}
+	url := cl.baseURL + path
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return fmt.Errorf("inventory client: create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	cl.signRequest(req)
+
+	resp, err := cl.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("inventory client: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("inventory client: stock-api returned %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
 // signRequest adds the gateway HMAC-SHA256 signature headers so that
 // stock-api's AuthGuard accepts the service-to-service call.
 // Signature = HMAC-SHA256(secret, method + "\n" + path + "\n" + timestamp)
