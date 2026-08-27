@@ -41,7 +41,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/natifdevelopment/go-baseapp v0.2.6 // indirect
 	github.com/natifdevelopment/go-observability v0.2.1 // indirect
-	github.com/natifdevelopment/go-types v1.0.17 // indirect
+	github.com/natifdevelopment/go-types v1.0.18 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.61.0 // indirect
